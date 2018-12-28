@@ -358,7 +358,7 @@ void Update()
 	if (startMainGame)
 	{
 		// Hero control
-		if (IsKeyDown(VK_UP))
+		if (IsKeyDown(0x57))
 		{
 			unitsData[heroIndex].yOrder = UnitOrder_Backward;
 		}
@@ -367,13 +367,13 @@ void Update()
 			unitsData[heroIndex].yOrder = UnitOrder_None;
 		}
 
-		if (IsKeyDown(VK_LEFT))
+		if (IsKeyDown(0x41))
 		{
 			unitsData[heroIndex].xOrder = UnitOrder_Backward;
 		}
 		else
 		{
-			if (IsKeyDown(VK_RIGHT))
+			if (IsKeyDown(0x44))
 			{
 				unitsData[heroIndex].xOrder = UnitOrder_Forward;
 			}

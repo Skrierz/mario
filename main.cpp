@@ -51,6 +51,8 @@ void Initialize()
 	// Set clockLastFrame start value
 	clockLastFrame = clock();
 
+	unitsCount = 0;
+
 	// Load level
 	for (int r = 0; r < levelRows; r++)
 	{
@@ -65,7 +67,7 @@ void Initialize()
 				case CellSymbol_Hero:
 					heroIndex = unitsCount;
 
-				//case CellSymbol_Goomba:
+				case CellSymbol_Goomba:
 					UnitType unitType = GetUnitTypeFromCell(cellSymbol);
 					unitsData[unitsCount].type = unitType;
 					unitsData[unitsCount].y = float(r);
@@ -155,6 +157,11 @@ void Render()
 				ConsoleColor symbolColor = GetRenderCellSymbolColor(cellSymbol);
 				ConsoleColor backgroundColor = GetRenderCellSymbolBackgroundColor(cellSymbol);
 
+				if (cellSymbol == CellSymbol_Hero)
+				{
+					symbolColor = GetRenderHeroColor(unitsData[heroIndex].health);
+				}
+
 				RenderSystemDrawChar(r, c, renderSymbol, symbolColor, backgroundColor);
 			}
 		}
@@ -171,6 +178,89 @@ void Render()
 
 	// End frame
 	RenderSystemFlush();
+}
+
+UnitData* GetUnitAt(int row, int column)
+{
+	for (int u = 0; u  < unitsCount; u++)
+	{
+		if (unitsData[u].health <= 0)
+		{
+			continue;
+		}
+		if (int(unitsData[u].y) == row && int(unitsData[u].x) == column)
+		{
+			return &unitsData[u];
+		}
+	}
+}
+
+void KillUnit(UnitData* pointerToUnitData)
+{
+	pointerToUnitData->health = 0;
+	int row = int(pointerToUnitData->x);
+	int column = int(pointerToUnitData->y);
+	levelData[row][column] = CellSymbol_Empty;
+}
+
+void UpdateAI()
+{
+	for (int u = 0; u < unitsCount; u++)
+	{
+		// Ignore Hero
+		if (unitsData[u].type == UnitType_Hero)
+		{
+			continue;
+		}
+
+		// Ignore dead units
+		if (unitsData[u].health <= 0)
+		{
+			continue;
+		}
+
+		int row = int(unitsData[u].x);
+		int column = int(unitsData[u].y);
+
+		if (unitsData[u].xOrder == UnitOrder_None)
+		{
+			// Start move to empty cell
+			if (levelData[row][column - 1] == CellSymbol_Empty)
+			{
+				unitsData[u].xOrder = UnitOrder_Backward;
+			}
+			else
+			{
+				unitsData[u].xOrder = UnitOrder_Forward;
+			}
+		}
+		else
+		{
+			if (unitsData[u].xOrder == UnitOrder_Backward)
+			{
+				unsigned char cellLeft = levelData[row][column - 1];
+				UnitType unitType = GetUnitTypeFromCell(cellLeft);
+
+				// Can not move cell left
+				if ((unitsData[u].x <= (column + cellBeginValue)) && cellLeft != CellSymbol_Empty && unitType != UnitType_None)
+				{
+					unitsData[u].xOrder = UnitOrder_Forward;
+				}
+			}
+			else
+			{
+				unsigned char cellRight = levelData[row][column + 1];
+				UnitType unitType = GetUnitTypeFromCell(cellRight);
+
+				// Can not move cell right
+				if ((unitsData[u].x >= (column + cellEndValue)) && cellRight != CellSymbol_Empty && unitType != UnitType_None)
+				{
+					unitsData[u].xOrder = UnitOrder_Backward;
+				}
+				
+			}
+		}
+	}
 }
 
 bool MoveUnitTo(UnitData* pointerToUnitData, float newX, float newY)
@@ -190,12 +280,112 @@ bool MoveUnitTo(UnitData* pointerToUnitData, float newX, float newY)
 	unsigned char unitSymbol = levelData[oldRow][oldColumn];
 	unsigned char destinationCellSymbol = levelData[newRow][newColumn];
 
+	int directionRow = newRow - oldRow;
+	int directionColumn = newColumn - oldColumn;
+
 	// All units actions
 	switch (destinationCellSymbol)
 	{
 	case CellSymbol_Empty:
 		canMoveToCell = true;
 		break;
+
+	case CellSymbol_Abyss:
+		KillUnit(pointerToUnitData);
+		break;
+
+	case CellSymbol_Box:
+		if (directionRow < 0)
+		{
+			levelData[newRow - 1][newColumn] = CellSymbol_Crystal;
+			levelData[newRow][newColumn] = CellSymbol_OpenedBox;
+		}
+		break;
+
+	case CellSymbol_MushroomBox:
+		if (directionRow < 0)
+		{
+			levelData[newRow - 1][newColumn] = CellSymbol_Mushroom;
+			levelData[newRow][newColumn] = CellSymbol_OpenedBox;
+		}
+		break;
+
+	}
+
+	// Only hero actions
+	if (pointerToUnitData->type == UnitType_Hero)
+	{
+		switch (destinationCellSymbol)
+		{
+		case CellSymbol_Exit:
+			isGameActive = false;
+			break;
+
+		case CellSymbol_Crystal:
+			canMoveToCell = true;
+			break;
+
+		case CellSymbol_Mushroom:
+			canMoveToCell = true;
+			if (pointerToUnitData->health < 2)
+			{
+				pointerToUnitData->health = 2;
+			}
+			break;
+
+		case CellSymbol_BrickWall:
+			if ((directionRow < 0) && (pointerToUnitData->health > 1))
+			{
+				levelData[newRow][newColumn] = CellSymbol_Empty;
+			}
+			break;
+
+		case CellSymbol_Goomba:
+			if (directionRow > 0)
+			{
+				UnitData* unitData = GetUnitAt(newRow, newColumn);
+				if (unitData != 0)
+				{
+					KillUnit(unitData);
+					pointerToUnitData->ySpeed = -GetUnitJumpSpeed(pointerToUnitData->type);
+				}
+			}
+			break;
+		}
+	}
+	// Only monster actions
+	else
+	{
+		switch (destinationCellSymbol)
+		{
+		case CellSymbol_Hero:
+			unitsData[heroIndex].health--;
+
+			if (pointerToUnitData->xOrder == UnitOrder_Backward)
+			{
+				pointerToUnitData->xOrder = UnitOrder_Forward;
+			}
+			else
+			{
+				pointerToUnitData->xOrder = UnitOrder_Backward;
+			}
+			break;
+
+		default:
+			UnitType unitType = GetUnitTypeFromCell(destinationCellSymbol);
+			if (unitType != UnitType_None)
+			{
+				if (pointerToUnitData->xOrder == UnitOrder_Backward)
+				{
+					pointerToUnitData->xOrder = UnitOrder_Forward;
+				}
+				else
+				{
+					pointerToUnitData->xOrder = UnitOrder_Backward;
+				}
+			}
+			break;
+		}
 	}
 
 	if (canMoveToCell)
@@ -354,10 +544,10 @@ void Update()
 		framesCounter = 0;
 	}
 
-	// пихнуть все в ифмейнгейм
 	if (startMainGame)
 	{
 		// Hero control
+		// W key (up)
 		if (IsKeyDown(0x57))
 		{
 			unitsData[heroIndex].yOrder = UnitOrder_Backward;
@@ -367,12 +557,14 @@ void Update()
 			unitsData[heroIndex].yOrder = UnitOrder_None;
 		}
 
+		// A key(left)
 		if (IsKeyDown(0x41))
 		{
 			unitsData[heroIndex].xOrder = UnitOrder_Backward;
 		}
 		else
 		{
+			// D key (right)
 			if (IsKeyDown(0x44))
 			{
 				unitsData[heroIndex].xOrder = UnitOrder_Forward;
@@ -387,6 +579,15 @@ void Update()
 		for (int u = 0; u < unitsCount; u++)
 		{
 			UpdateUnit(&unitsData[u], deltaTime);
+		}
+
+		// Update AI
+		UpdateAI();
+
+		// Hero dead
+		if (unitsData[heroIndex].health <= 0)
+		{
+			Initialize();
 		}
 	}
 }
